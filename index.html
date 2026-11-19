@@ -5,116 +5,43 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-
 html, body {
-  height: 100%;
-  overflow: hidden;
-  color: #e2e8f0;
-  background: #070b18;
-  font-family: system-ui, sans-serif;
-  touch-action: none;
-  -webkit-user-select: none;
-  user-select: none;
+  height: 100%; overflow: hidden; color: #e2e8f0;
+  background: #070b18; font-family: system-ui, sans-serif;
+  touch-action: none; -webkit-user-select: none; user-select: none;
 }
-
-.game-root {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-}
-
+.game-root { position: fixed; inset: 0; display: flex; flex-direction: column; }
 .hud {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  display: flex;
-  justify-content: space-between;
-  padding: 10px 14px;
-  font-size: 13px;
-  font-weight: 800;
-  z-index: 10;
-  pointer-events: none;
+  position: absolute; top: 0; left: 0; right: 0;
+  display: flex; justify-content: space-between;
+  padding: 10px 14px; font-size: 13px; font-weight: 800;
+  z-index: 10; pointer-events: none;
   text-shadow: 0 1px 3px rgba(0,0,0,.8);
 }
-
-.arena {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-}
-
-canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-  background: #0c132b;
-  touch-action: none;
-}
-
+.arena { position: relative; flex: 1; min-height: 0; }
+canvas { display: block; width: 100%; height: 100%; background: #0c132b; touch-action: none; }
 #overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  padding: 28px;
-  text-align: center;
-  background: rgba(5, 9, 23, .92);
-  z-index: 20;
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  justify-content: center; align-items: center; padding: 28px;
+  text-align: center; background: rgba(5, 9, 23, .92); z-index: 20;
 }
-
 #overlay.hidden { display: none; }
-
 h2 { color: #67e8f9; margin: 8px 0; font-size: 22px; }
-
 p { line-height: 1.6; font-size: 14px; max-width: 340px; }
-
 button {
-  border: 0;
-  border-radius: 12px;
-  padding: 15px 10px;
-  font: bold 16px system-ui;
-  background: #67e8f9;
-  color: #083344;
-  cursor: pointer;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
+  border: 0; border-radius: 12px; padding: 15px 10px;
+  font: bold 16px system-ui; background: #67e8f9; color: #083344;
+  cursor: pointer; touch-action: none; user-select: none;
+  -webkit-user-select: none; -webkit-touch-callout: none;
 }
-
-.controls {
-  display: flex;
-  gap: 8px;
-  padding: 8px;
-  flex-shrink: 0;
-}
-
+.controls { display: flex; gap: 8px; padding: 8px; flex-shrink: 0; }
 .direction { flex: 1; background: #c4b5fd; color: #2e1065; }
 #hook { flex: 2; }
-
-#pause {
-  width: 100%;
-  background: #263249;
-  color: #e2e8f0;
-  padding: 10px;
-  border-radius: 0;
-  flex-shrink: 0;
-}
-
+#pause { width: 100%; background: #263249; color: #e2e8f0; padding: 10px; border-radius: 0; flex-shrink: 0; }
 #status {
-  color: #a5f3fc;
-  min-height: 34px;
-  text-align: center;
-  font-size: 12px;
-  padding: 4px 8px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  color: #a5f3fc; min-height: 34px; text-align: center; font-size: 12px;
+  padding: 4px 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
 }
 </style>
 </head>
@@ -133,7 +60,6 @@ button {
       <button id="action">Start escape</button>
     </div>
   </div>
-
   <div class="controls">
     <button class="direction" id="left">◀</button>
     <button id="hook">🪝 HOOK</button>
@@ -150,32 +76,24 @@ const $ = id => document.getElementById(id);
 const canvas = $("game");
 const ctx = canvas.getContext("2d");
 
-let W = 480;
-let H = 600;
+let W = 480, H = 600;
 const START_Y = 485;
 const FINISH_Y = -2200;
 const REACH = 235;
 
 let state = "ready";
-let player;
-let anchors = [];
-let orbs = [];
-let particles = [];
-let rope = null;
+let player, anchors = [], orbs = [], powerups = [];
+let particles = [], rope = null;
 
-let camera = 0;
-let lava = 665;
-let elapsed = 0;
-let collected = 0;
-let highest = START_Y;
-let notice = "";
-let noticeTime = 0;
+let camera = 0, lava = 665, elapsed = 0, collected = 0;
+let highest = START_Y, notice = "", noticeTime = 0;
 
-// Surge mechanics
-let surgeTimer = 0;
-let surgeActive = false;
-const SURGE_INTERVAL = 8;
-const SURGE_DURATION = 2;
+let surgeTimer = 0, surgeActive = false;
+const SURGE_INTERVAL = 8, SURGE_DURATION = 2;
+
+// Pickup effects
+let lavaSlowTimer = 0;
+let shield = 0;
 
 const keyboard = new Set();
 const leftTouches = new Set();
@@ -185,20 +103,16 @@ function resize() {
   const arena = canvas.parentElement;
   const dpr = window.devicePixelRatio || 1;
   const rect = arena.getBoundingClientRect();
-  W = rect.width;
-  H = rect.height;
+  W = rect.width; H = rect.height;
   canvas.width = Math.round(W * dpr);
   canvas.height = Math.round(H * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
-
 window.addEventListener("resize", resize);
 window.addEventListener("orientationchange", resize);
 
 function clearInput() {
-  keyboard.clear();
-  leftTouches.clear();
-  rightTouches.clear();
+  keyboard.clear(); leftTouches.clear(); rightTouches.clear();
 }
 
 function panel(title, message, label, action) {
@@ -212,112 +126,94 @@ function panel(title, message, label, action) {
 function random(min, max) { return min + Math.random() * (max - min); }
 
 function generateTower() {
-  anchors = [];
-  orbs = [];
+  anchors = []; orbs = []; powerups = [];
 
-  let x = W / 2;
-  let y = 325;
-
+  let x = W / 2, y = 325, idx = 0;
+  const towerAnchors = [];
   while (y > FINISH_Y - 100) {
-    anchors.push({
-      x,
-      y,
-      uses: Math.floor(random(2, 4)) // 2 or 3 hooks allowed
-    });
+    const a = { x, y, uses: Math.floor(random(2, 4)), maxUses: 0 };
+    a.maxUses = a.uses;
+    anchors.push(a);
+    towerAnchors.push(a);
 
-    orbs.push({
-      x: x + random(-24, 24),
-      y: y + 60,
-      taken: false
-    });
+    orbs.push({ x: x + random(-24, 24), y: y + 60, taken: false });
+
+    // Rope refill every 3-4 anchors
+    if (idx > 0 && idx % 3 === 0) {
+      powerups.push({
+        x: x + random(-60, 60), y: y - random(20, 60),
+        type: "rope", taken: false
+      });
+    }
+    // Hourglass every 5
+    if (idx > 0 && idx % 5 === 0) {
+      powerups.push({
+        x: x + random(-70, 70), y: y - random(30, 70),
+        type: "time", taken: false
+      });
+    }
+    // Shield every ~9 anchors
+    if (idx > 0 && idx % 9 === 0) {
+      powerups.push({
+        x: x + random(-60, 60), y: y - random(40, 80),
+        type: "shield", taken: false
+      });
+    }
+    // Power star every 6
+    if (idx > 0 && idx % 6 === 0) {
+      powerups.push({
+        x: x + random(-60, 60), y: y - random(30, 60),
+        type: "power", taken: false
+      });
+    }
 
     x = Math.max(85, Math.min(W - 85, x + random(-190, 190)));
     y -= random(105, 185);
+    idx++;
   }
 }
 
 function start() {
   resize();
   generateTower();
-
-  player = {
-    x: W / 2,
-    y: START_Y,
-    vx: 0,
-    vy: 0,
-    r: 13
-  };
-
-  rope = null;
-  particles = [];
-  camera = 0;
-  lava = 665;
-  elapsed = 0;
-  collected = 0;
-  highest = START_Y;
-  notice = "";
-  noticeTime = 0;
-  surgeTimer = 0;
-  surgeActive = false;
-
-  clearInput();
-  state = "playing";
-
+  player = { x: W / 2, y: START_Y, vx: 0, vy: 0, r: 13 };
+  rope = null; particles = [];
+  camera = 0; lava = 665; elapsed = 0; collected = 0;
+  highest = START_Y; notice = ""; noticeTime = 0;
+  surgeTimer = 0; surgeActive = false;
+  lavaSlowTimer = 0; shield = 0;
+  clearInput(); state = "playing";
   $("overlay").classList.add("hidden");
   $("pause").textContent = "Pause";
-
   hud();
 }
 
 function candidate() {
   if (!player) return null;
-
-  let best = null;
-  let bestScore = Infinity;
-
+  let best = null, bestScore = Infinity;
   for (const anchor of anchors) {
     if (anchor.uses <= 0) continue;
-
     const dx = anchor.x - player.x;
     const dy = anchor.y - player.y;
     const distance = Math.hypot(dx, dy);
-
     if (dy > -60 || distance > REACH) continue;
-
     const score = distance + Math.abs(dx) * 0.15;
-
-    if (score < bestScore) {
-      best = anchor;
-      bestScore = score;
-    }
+    if (score < bestScore) { best = anchor; bestScore = score; }
   }
-
   return best;
 }
 
 function hook() {
   if (state !== "playing") return;
-
-  if (rope) {
-    rope = null;
-    return;
-  }
-
+  if (rope) { rope = null; return; }
   const anchor = candidate();
-
   if (!anchor) {
     notice = "No usable anchor in reach!";
     noticeTime = 1.5;
     return;
   }
-
   anchor.uses -= 1;
-
-  rope = {
-    anchor,
-    length: Math.hypot(anchor.x - player.x, anchor.y - player.y)
-  };
-
+  rope = { anchor, length: Math.hypot(anchor.x - player.x, anchor.y - player.y) };
   burst(anchor.x, anchor.y, "#67e8f9", 10);
 }
 
@@ -326,94 +222,120 @@ function burst(x, y, color, count = 18) {
     const angle = random(0, Math.PI * 2);
     const speed = random(35, 150);
     particles.push({
-      x, y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      life: 0.6,
-      color
+      x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+      life: 0.6, color
     });
   }
 }
 
 function lose(reason) {
   if (state !== "playing") return;
-  state = "over";
-  clearInput();
+  state = "over"; clearInput();
   const height = Math.floor((START_Y - highest) / 10);
-  panel(
-    "ESCAPE FAILED",
+  panel("ESCAPE FAILED",
     reason + " Height: " + height + " m. Orbs: " + collected + ".",
-    "Try a new tower",
-    start
-  );
+    "Try a new tower", start);
 }
 
 function win() {
-  state = "won";
-  clearInput();
-  panel(
-    "YOU ESCAPED!",
+  state = "won"; clearInput();
+  panel("YOU ESCAPED!",
     "You climbed the tower in " + elapsed.toFixed(1) +
-      " seconds and collected " + collected + " orbs!",
-    "Escape another tower",
-    start
-  );
+    " seconds and collected " + collected + " orbs!",
+    "Escape another tower", start);
 }
 
 function pause() {
   if (state === "playing") {
-    state = "paused";
-    clearInput();
-    $("pause").textContent = "Resume";
+    state = "paused"; clearInput(); $("pause").textContent = "Resume";
     panel("PAUSED", "The lava is paused too.", "Resume", pause);
   } else if (state === "paused") {
-    state = "playing";
-    $("pause").textContent = "Pause";
+    state = "playing"; $("pause").textContent = "Pause";
     $("overlay").classList.add("hidden");
   }
 }
 
 function hud() {
   if (!player) return;
-
   const height = Math.max(0, Math.floor((START_Y - highest) / 10));
   const percent = Math.max(0, Math.min(100,
     Math.floor((START_Y - highest) / (START_Y - FINISH_Y) * 100)));
-
   $("height").textContent = "Height: " + height + " m";
-  $("orbs").textContent = "Orbs: " + collected;
+  $("orbs").textContent = "Orbs: " + collected +
+    (shield > 0 ? " 🛡" : "");
   $("progress").textContent = percent + "%";
   $("hook").textContent = rope ? "✂ RELEASE" : "🪝 HOOK";
 
-  if (noticeTime > 0) {
-    $("status").textContent = notice;
-  } else if (surgeActive) {
-    $("status").textContent = "⚠ LAVA SURGE ACTIVE — CLIMB!";
-  } else if (rope) {
-    $("status").textContent = "Reeling up! Release & hook the next anchor.";
-  } else if (candidate()) {
-    $("status").textContent = "Anchor in reach — tap HOOK!";
-  } else {
-    $("status").textContent = "Steer toward an anchor above you.";
+  if (noticeTime > 0) $("status").textContent = notice;
+  else if (surgeActive) $("status").textContent = "⚠ LAVA SURGE ACTIVE — CLIMB!";
+  else if (lavaSlowTimer > 0) $("status").textContent = "⏳ Lava slowed — " + lavaSlowTimer.toFixed(1) + "s";
+  else if (rope) $("status").textContent = "Reeling up! Release & hook the next anchor.";
+  else if (candidate()) $("status").textContent = "Anchor in reach — tap HOOK!";
+  else $("status").textContent = "Steer toward an anchor above you.";
+}
+
+// Apply pickup effect
+function applyPickup(p) {
+  if (p.type === "rope") {
+    // Refill nearest exhausted anchors within 220px
+    let refilled = 0;
+    for (const a of anchors) {
+      if (a.uses <= 0 &&
+          Math.hypot(a.x - p.x, a.y - p.y) < 220) {
+        a.uses = Math.min(a.maxUses, a.uses + 1);
+        refilled++;
+      }
+    }
+    if (refilled === 0) {
+      // Nothing exhausted nearby — give nearest usable one a bonus
+      let nearest = null, bd = Infinity;
+      for (const a of anchors) {
+        const d = Math.hypot(a.x - p.x, a.y - p.y);
+        if (d < bd) { bd = d; nearest = a; }
+      }
+      if (nearest) { nearest.uses = Math.min(nearest.maxUses, nearest.uses + 1); refilled = 1; }
+    }
+    notice = "🧵 Rope refilled (+" + refilled + " anchor)";
+    noticeTime = 1.6;
+    burst(p.x, p.y, "#4ade80", 22);
+  } else if (p.type === "time") {
+    lavaSlowTimer = 3;
+    notice = "⏳ Lava slowed for 3s!";
+    noticeTime = 1.6;
+    burst(p.x, p.y, "#38bdf8", 22);
+  } else if (p.type === "shield") {
+    shield = Math.min(1, shield + 1);
+    notice = "🛡 Shield ready!";
+    noticeTime = 1.6;
+    burst(p.x, p.y, "#a78bfa", 22);
+  } else if (p.type === "power") {
+    let nearest = null, bd = Infinity;
+    for (const a of anchors) {
+      const d = Math.hypot(a.x - p.x, a.y - p.y);
+      if (d < bd) { bd = d; nearest = a; }
+    }
+    if (nearest) {
+      nearest.uses += 2;
+      nearest.maxUses = Math.max(nearest.maxUses, nearest.uses);
+    }
+    notice = "✨ Anchor powered (+2 uses)!";
+    noticeTime = 1.6;
+    burst(p.x, p.y, "#22d3ee", 22);
   }
 }
 
 function update(dt) {
   if (state === "paused") return;
-
   for (const p of particles) {
-    p.life -= dt;
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
+    p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt;
   }
   particles = particles.filter(p => p.life > 0);
-
   if (state !== "playing") return;
 
   elapsed += dt;
   noticeTime = Math.max(0, noticeTime - dt);
+  lavaSlowTimer = Math.max(0, lavaSlowTimer - dt);
 
-  // Surge timing
   surgeTimer += dt;
   const cycle = surgeTimer % SURGE_INTERVAL;
   surgeActive = cycle < SURGE_DURATION;
@@ -422,38 +344,28 @@ function update(dt) {
     keyboard.has("ArrowLeft") || keyboard.has("a");
   const right = rightTouches.size > 0 ||
     keyboard.has("ArrowRight") || keyboard.has("d");
-
   const steering = Number(right) - Number(left);
 
   player.vx += steering * 560 * dt;
   player.vx *= Math.exp(-0.7 * dt);
   player.vx = Math.max(-300, Math.min(300, player.vx));
-
   player.vy += 720 * dt;
   player.vy = Math.min(640, player.vy);
-
   player.x += player.vx * dt;
   player.y += player.vy * dt;
 
   if (rope) {
     const previousLength = rope.length;
     rope.length = Math.max(60, rope.length - 95 * dt);
-
     const reelVelocity = (rope.length - previousLength) / dt;
-
     const dx = player.x - rope.anchor.x;
     const dy = player.y - rope.anchor.y;
     const distance = Math.hypot(dx, dy) || 1;
-
     if (distance >= rope.length) {
-      const nx = dx / distance;
-      const ny = dy / distance;
-
+      const nx = dx / distance, ny = dy / distance;
       player.x = rope.anchor.x + nx * rope.length;
       player.y = rope.anchor.y + ny * rope.length;
-
       const radialVelocity = player.vx * nx + player.vy * ny;
-
       if (radialVelocity > reelVelocity) {
         player.vx -= (radialVelocity - reelVelocity) * nx;
         player.vy -= (radialVelocity - reelVelocity) * ny;
@@ -463,102 +375,130 @@ function update(dt) {
 
   if (player.x < 20) { player.x = 20; player.vx = Math.abs(player.vx) * 0.22; }
   if (player.x > W - 20) { player.x = W - 20; player.vx = -Math.abs(player.vx) * 0.22; }
-
   if (player.y + player.r > 510) {
     player.y = 510 - player.r;
     player.vy = Math.min(0, player.vy);
   }
 
   highest = Math.min(highest, player.y);
-
   const targetCamera = Math.min(0, highest - 290);
   camera += (targetCamera - camera) * Math.min(1, dt * 10);
 
-  // Lava base speed + surge boost
-  const baseSpeed = Math.min(130, 48 + elapsed * 0.85);
+  // Lava speed with slow + surge
+  let baseSpeed = Math.min(130, 48 + elapsed * 0.85);
+  if (lavaSlowTimer > 0) baseSpeed *= 0.5;
   const lavaSpeed = surgeActive ? baseSpeed * 1.6 : baseSpeed;
   lava -= lavaSpeed * dt;
 
   for (const orb of orbs) {
     if (!orb.taken &&
         Math.hypot(orb.x - player.x, orb.y - player.y) < 18) {
-      orb.taken = true;
-      collected += 1;
+      orb.taken = true; collected += 1;
       burst(orb.x, orb.y, "#facc15");
     }
   }
 
-  if (player.y + player.r >= lava) { lose("The lava caught you!"); return; }
+  for (const p of powerups) {
+    if (!p.taken &&
+        Math.hypot(p.x - player.x, p.y - player.y) < 24) {
+      p.taken = true;
+      applyPickup(p);
+    }
+  }
+
+  if (player.y + player.r >= lava) {
+    if (shield > 0) {
+      shield -= 1;
+      lava -= 120;
+      player.vy = -420;
+      burst(player.x, player.y, "#a78bfa", 26);
+      notice = "🛡 Shield saved you!";
+      noticeTime = 2;
+    } else {
+      lose("The lava caught you!");
+      return;
+    }
+  }
   if (player.y - camera > H + 40) { lose("You fell too far down the tower!"); return; }
   if (player.y <= FINISH_Y) { win(); }
 }
 
-function circle(x, y, radius, color) {
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
-  ctx.fill();
+function circle(x, y, r, c) {
+  ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+}
+
+// Draw an icon inside a glowing pickup circle
+function drawPickup(p, y) {
+  const colors = {
+    rope: "#4ade80",
+    time: "#38bdf8",
+    shield: "#a78bfa",
+    power: "#22d3ee"
+  };
+  const col = colors[p.type];
+  ctx.save();
+  ctx.shadowColor = col; ctx.shadowBlur = 14;
+  circle(p.x, y, 11, col);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "#0c132b";
+  ctx.beginPath(); ctx.arc(p.x, y, 7, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = col;
+  ctx.font = "bold 13px system-ui";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  let sym = "?";
+  if (p.type === "rope") sym = "🧵";
+  else if (p.type === "time") sym = "⏳";
+  else if (p.type === "shield") sym = "🛡";
+  else if (p.type === "power") sym = "✨";
+  ctx.font = "12px system-ui";
+  ctx.fillText(sym, p.x, y + 1);
+  ctx.restore();
 }
 
 function draw() {
   ctx.clearRect(0, 0, W, H);
-
   const gridOffset = ((-camera) % 50 + 50) % 50;
-
-  ctx.strokeStyle = "#182441";
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = "#182441"; ctx.lineWidth = 1;
   for (let x = 0; x <= W; x += 48) {
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
   }
   for (let y = gridOffset; y < H; y += 50) {
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
   }
-
   ctx.fillStyle = "#1d2945";
-  ctx.fillRect(0, 0, 10, H);
-  ctx.fillRect(W - 10, 0, 10, H);
+  ctx.fillRect(0, 0, 10, H); ctx.fillRect(W - 10, 0, 10, H);
 
   if (!player) return;
-
   const py = player.y - camera;
   const selected = rope ? null : candidate();
 
   const floorY = 510 - camera;
   if (floorY < H) {
-    ctx.fillStyle = "#334155";
-    ctx.fillRect(10, floorY, W - 20, 18);
-    ctx.fillStyle = "#94a3b8";
-    ctx.fillRect(10, floorY, W - 20, 3);
+    ctx.fillStyle = "#334155"; ctx.fillRect(10, floorY, W - 20, 18);
+    ctx.fillStyle = "#94a3b8"; ctx.fillRect(10, floorY, W - 20, 3);
   }
 
   const exitY = FINISH_Y - camera;
   if (exitY > -90 && exitY < H + 90) {
     ctx.save();
-    ctx.strokeStyle = "#86efac";
-    ctx.shadowColor = "#86efac";
-    ctx.shadowBlur = 20;
-    ctx.lineWidth = 5;
+    ctx.strokeStyle = "#86efac"; ctx.shadowColor = "#86efac";
+    ctx.shadowBlur = 20; ctx.lineWidth = 5;
     ctx.beginPath();
     ctx.ellipse(W / 2, exitY, 155, 45, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
-
-    ctx.fillStyle = "#86efac";
-    ctx.font = "bold 20px system-ui";
-    ctx.textAlign = "center";
+    ctx.stroke(); ctx.restore();
+    ctx.fillStyle = "#86efac"; ctx.font = "bold 20px system-ui";
+    ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
     ctx.fillText("ESCAPE", W / 2, exitY - 55);
   }
 
   for (const anchor of anchors) {
     const y = anchor.y - camera;
     if (y < -30 || y > H + 30) continue;
-
     const exhausted = anchor.uses <= 0;
-    const highlighted = anchor === selected ||
-      (rope && rope.anchor === anchor);
+    const highlighted = anchor === selected || (rope && rope.anchor === anchor);
 
-    ctx.strokeStyle = "#334155";
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#334155"; ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(anchor.x, y);
     ctx.lineTo(anchor.x < W / 2 ? 10 : W - 10, y - 20);
@@ -567,22 +507,18 @@ function draw() {
     circle(anchor.x, y, highlighted ? 10 : 7,
       exhausted ? "#3b2f2f" : highlighted ? "#67e8f9" : "#64748b");
 
-    // Usage pips
     if (!exhausted) {
-      for (let i = 0; i < anchor.uses; i++) {
+      for (let i = 0; i < Math.min(anchor.uses, 5); i++) {
         ctx.fillStyle = "#a5f3fc";
         ctx.beginPath();
-        ctx.arc(anchor.x - (anchor.uses - 1) * 4 + i * 8, y + 16, 2, 0, Math.PI * 2);
+        ctx.arc(anchor.x - (Math.min(anchor.uses, 5) - 1) * 4 + i * 8, y + 16, 2, 0, Math.PI * 2);
         ctx.fill();
       }
     }
 
     if (highlighted) {
-      ctx.strokeStyle = "#a5f3fc";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(anchor.x, y, 17, 0, Math.PI * 2);
-      ctx.stroke();
+      ctx.strokeStyle = "#a5f3fc"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(anchor.x, y, 17, 0, Math.PI * 2); ctx.stroke();
     }
   }
 
@@ -593,23 +529,26 @@ function draw() {
     ctx.beginPath();
     ctx.moveTo(player.x, py);
     ctx.lineTo(selected.x, selected.y - camera);
-    ctx.stroke();
-    ctx.restore();
+    ctx.stroke(); ctx.restore();
   }
 
   for (const orb of orbs) {
     const y = orb.y - camera;
     if (orb.taken || y < -20 || y > H + 20) continue;
     ctx.save();
-    ctx.shadowColor = "#facc15";
-    ctx.shadowBlur = 12;
+    ctx.shadowColor = "#facc15"; ctx.shadowBlur = 12;
     circle(orb.x, y, 7, "#facc15");
     ctx.restore();
   }
 
+  for (const p of powerups) {
+    const y = p.y - camera;
+    if (p.taken || y < -30 || y > H + 30) continue;
+    drawPickup(p, y);
+  }
+
   if (rope) {
-    ctx.strokeStyle = "#67e8f9";
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#67e8f9"; ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(player.x, py);
     ctx.lineTo(rope.anchor.x, rope.anchor.y - camera);
@@ -627,16 +566,19 @@ function draw() {
     ctx.save();
     ctx.translate(player.x, py);
     ctx.rotate(player.vx / 1000);
-    ctx.shadowColor = "#c4b5fd";
-    ctx.shadowBlur = 18;
+    ctx.shadowColor = "#c4b5fd"; ctx.shadowBlur = 18;
     ctx.fillStyle = "#c4b5fd";
     ctx.fillRect(-12, -13, 24, 26);
     ctx.shadowBlur = 0;
-    ctx.fillStyle = "#312e81";
-    ctx.fillRect(-7, -6, 14, 7);
-    ctx.fillStyle = "#67e8f9";
-    ctx.fillRect(-5, -4, 10, 3);
+    ctx.fillStyle = "#312e81"; ctx.fillRect(-7, -6, 14, 7);
+    ctx.fillStyle = "#67e8f9"; ctx.fillRect(-5, -4, 10, 3);
     ctx.restore();
+
+    // Shield aura
+    if (shield > 0) {
+      ctx.strokeStyle = "rgba(167,139,250,.7)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(player.x, py, 22, 0, Math.PI * 2); ctx.stroke();
+    }
   }
 
   const lavaY = lava - camera;
@@ -644,7 +586,6 @@ function draw() {
     const startY = Math.max(-20, lavaY);
     ctx.fillStyle = surgeActive ? "#ef4444" : "#dc2626";
     ctx.fillRect(0, startY, W, H - startY);
-
     ctx.fillStyle = "#fb923c";
     ctx.beginPath();
     ctx.moveTo(0, startY + 12);
@@ -652,17 +593,14 @@ function draw() {
       const wave = Math.sin(x * 0.04 + elapsed * 5) * 5;
       ctx.lineTo(x, lavaY + wave);
     }
-    ctx.lineTo(W, startY + 22);
-    ctx.lineTo(0, startY + 22);
-    ctx.closePath();
-    ctx.fill();
+    ctx.lineTo(W, startY + 22); ctx.lineTo(0, startY + 22);
+    ctx.closePath(); ctx.fill();
 
     if (surgeActive) {
       ctx.fillStyle = "rgba(248,113,113,.35)";
       ctx.fillRect(0, H - 60, W, 60);
       ctx.fillStyle = "#fee2e2";
-      ctx.font = "bold 16px system-ui";
-      ctx.textAlign = "center";
+      ctx.font = "bold 16px system-ui"; ctx.textAlign = "center";
       ctx.fillText("⚠ SURGE ⚠", W / 2, H - 24);
     }
   }
@@ -670,8 +608,7 @@ function draw() {
   if (state === "playing") {
     const gap = Math.max(0, Math.floor((lava - player.y) / 10));
     ctx.fillStyle = gap < 20 ? "#fb923c" : "#94a3b8";
-    ctx.textAlign = "center";
-    ctx.font = "13px system-ui";
+    ctx.textAlign = "center"; ctx.font = "13px system-ui";
     ctx.fillText("Lava below: " + gap + " m", W / 2, 60);
   }
 }
@@ -697,8 +634,7 @@ bindDirection($("right"), rightTouches);
 for (const element of [canvas, $("hook")]) {
   element.addEventListener("pointerdown", event => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
-    event.preventDefault();
-    hook();
+    event.preventDefault(); hook();
   });
   element.addEventListener("contextmenu", e => e.preventDefault());
 }
@@ -709,10 +645,7 @@ window.addEventListener("keydown", event => {
     event.preventDefault();
     if (state === "playing") keyboard.add(key);
   }
-  if (event.code === "Space") {
-    event.preventDefault();
-    if (!event.repeat) hook();
-  }
+  if (event.code === "Space") { event.preventDefault(); if (!event.repeat) hook(); }
   if (event.code === "KeyP" && !event.repeat) pause();
 });
 
@@ -724,7 +657,6 @@ window.addEventListener("blur", () => {
   clearInput();
   if (state === "playing") pause();
 });
-
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && state === "playing") pause();
 });
@@ -733,31 +665,23 @@ $("pause").onclick = pause;
 
 panel(
   "GRAPPLE ESCAPE",
-  "Hook onto anchors, swing upward, and escape the rising lava. " +
-  "Each anchor has limited uses! Watch for lava surges. " +
-  "Release and hook again to reach the next anchor!",
-  "Start escape",
-  start
+  "Hook onto anchors and escape the rising lava. Anchors have limited uses — " +
+  "grab 🧵 rope refills, ⏳ time slows, 🛡 shields and ✨ power boosts along the way!",
+  "Start escape", start
 );
 
 resize();
-
 let previous = performance.now();
 
 function frame(now) {
   const elapsedFrame = Math.min((now - previous) / 1000, 0.05);
   previous = now;
-
   const steps = Math.max(1, Math.ceil(elapsedFrame / 0.008));
   const dt = elapsedFrame / steps;
-
   for (let i = 0; i < steps; i++) update(dt);
-
-  hud();
-  draw();
+  hud(); draw();
   requestAnimationFrame(frame);
 }
-
 requestAnimationFrame(frame);
 </script>
 </body>
