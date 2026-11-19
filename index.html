@@ -13,11 +13,21 @@ html, body {
 .game-root { position: fixed; inset: 0; display: flex; flex-direction: column; }
 .hud {
   position: absolute; top: 0; left: 0; right: 0;
-  display: flex; justify-content: space-between;
+  display: flex; justify-content: space-between; align-items: center;
   padding: 10px 14px; font-size: 13px; font-weight: 800;
   z-index: 10; pointer-events: none;
   text-shadow: 0 1px 3px rgba(0,0,0,.8);
 }
+.hud-shield {
+  width: 14px; height: 16px;
+  display: inline-block; vertical-align: middle;
+  margin-left: 6px;
+  background: #a78bfa;
+  clip-path: polygon(50% 0, 100% 25%, 100% 70%, 50% 100%, 0 70%, 0 25%);
+  opacity: 0;
+  transition: opacity .2s;
+}
+.hud-shield.on { opacity: 1; }
 .arena { position: relative; flex: 1; min-height: 0; }
 canvas { display: block; width: 100%; height: 100%; background: #0c132b; touch-action: none; }
 #overlay {
@@ -33,10 +43,12 @@ button {
   font: bold 16px system-ui; background: #67e8f9; color: #083344;
   cursor: pointer; touch-action: none; user-select: none;
   -webkit-user-select: none; -webkit-touch-callout: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
 }
 .controls { display: flex; gap: 8px; padding: 8px; flex-shrink: 0; }
 .direction { flex: 1; background: #c4b5fd; color: #2e1065; }
 #hook { flex: 2; }
+#hook svg { width: 20px; height: 20px; }
 #pause { width: 100%; background: #263249; color: #e2e8f0; padding: 10px; border-radius: 0; flex-shrink: 0; }
 #status {
   color: #a5f3fc; min-height: 34px; text-align: center; font-size: 12px;
@@ -51,7 +63,7 @@ button {
     <canvas id="game" tabindex="0" aria-label="Grapple Escape arena"></canvas>
     <div class="hud">
       <span id="height">Height: 0 m</span>
-      <span id="orbs">Orbs: 0</span>
+      <span id="orbs">Orbs: 0<span class="hud-shield" id="shieldIcon"></span></span>
       <span id="progress">0%</span>
     </div>
     <div id="overlay">
@@ -62,7 +74,13 @@ button {
   </div>
   <div class="controls">
     <button class="direction" id="left">◀</button>
-    <button id="hook">🪝 HOOK</button>
+    <button id="hook">
+      <svg id="hookIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3v10a5 5 0 0 0 10 0" />
+        <path d="M8 6l4-3 4 3" />
+      </svg>
+      <span id="hookLabel">HOOK</span>
+    </button>
     <button class="direction" id="right">▶</button>
   </div>
   <button id="pause">Pause</button>
@@ -79,19 +97,18 @@ const ctx = canvas.getContext("2d");
 let W = 480, H = 600;
 const START_Y = 485;
 const FINISH_Y = -2200;
-const REACH = 235;
+const REACH = 270;
 
 let state = "ready";
 let player, anchors = [], orbs = [], powerups = [];
 let particles = [], rope = null;
 
-let camera = 0, lava = 665, elapsed = 0, collected = 0;
+let camera = 0, lava = 690, elapsed = 0, collected = 0;
 let highest = START_Y, notice = "", noticeTime = 0;
 
 let surgeTimer = 0, surgeActive = false;
-const SURGE_INTERVAL = 8, SURGE_DURATION = 2;
+const SURGE_INTERVAL = 11, SURGE_DURATION = 1.6;
 
-// Pickup effects
 let lavaSlowTimer = 0;
 let shield = 0;
 
@@ -129,46 +146,40 @@ function generateTower() {
   anchors = []; orbs = []; powerups = [];
 
   let x = W / 2, y = 325, idx = 0;
-  const towerAnchors = [];
   while (y > FINISH_Y - 100) {
-    const a = { x, y, uses: Math.floor(random(2, 4)), maxUses: 0 };
-    a.maxUses = a.uses;
+    const uses = Math.floor(random(3, 6)); // 3..5
+    const a = { x, y, uses, maxUses: uses };
     anchors.push(a);
-    towerAnchors.push(a);
 
     orbs.push({ x: x + random(-24, 24), y: y + 60, taken: false });
 
-    // Rope refill every 3-4 anchors
-    if (idx > 0 && idx % 3 === 0) {
+    if (idx > 0 && idx % 4 === 0) {
       powerups.push({
-        x: x + random(-60, 60), y: y - random(20, 60),
+        x: x + random(-70, 70), y: y - random(20, 60),
         type: "rope", taken: false
       });
     }
-    // Hourglass every 5
-    if (idx > 0 && idx % 5 === 0) {
+    if (idx > 0 && idx % 6 === 0) {
       powerups.push({
         x: x + random(-70, 70), y: y - random(30, 70),
         type: "time", taken: false
       });
     }
-    // Shield every ~9 anchors
-    if (idx > 0 && idx % 9 === 0) {
+    if (idx > 0 && idx % 7 === 0) {
       powerups.push({
         x: x + random(-60, 60), y: y - random(40, 80),
         type: "shield", taken: false
       });
     }
-    // Power star every 6
-    if (idx > 0 && idx % 6 === 0) {
+    if (idx > 0 && idx % 8 === 0) {
       powerups.push({
         x: x + random(-60, 60), y: y - random(30, 60),
         type: "power", taken: false
       });
     }
 
-    x = Math.max(85, Math.min(W - 85, x + random(-190, 190)));
-    y -= random(105, 185);
+    x = Math.max(85, Math.min(W - 85, x + random(-150, 150)));
+    y -= random(110, 150);
     idx++;
   }
 }
@@ -178,7 +189,7 @@ function start() {
   generateTower();
   player = { x: W / 2, y: START_Y, vx: 0, vy: 0, r: 13 };
   rope = null; particles = [];
-  camera = 0; lava = 665; elapsed = 0; collected = 0;
+  camera = 0; lava = 690; elapsed = 0; collected = 0;
   highest = START_Y; notice = ""; noticeTime = 0;
   surgeTimer = 0; surgeActive = false;
   lavaSlowTimer = 0; shield = 0;
@@ -196,7 +207,7 @@ function candidate() {
     const dx = anchor.x - player.x;
     const dy = anchor.y - player.y;
     const distance = Math.hypot(dx, dy);
-    if (dy > -60 || distance > REACH) continue;
+    if (dy > -50 || distance > REACH) continue;
     const score = distance + Math.abs(dx) * 0.15;
     if (score < bestScore) { best = anchor; bestScore = score; }
   }
@@ -261,51 +272,50 @@ function hud() {
   const percent = Math.max(0, Math.min(100,
     Math.floor((START_Y - highest) / (START_Y - FINISH_Y) * 100)));
   $("height").textContent = "Height: " + height + " m";
-  $("orbs").textContent = "Orbs: " + collected +
-    (shield > 0 ? " 🛡" : "");
+  $("orbs").firstChild.textContent = "Orbs: " + collected;
+  $("shieldIcon").classList.toggle("on", shield > 0);
   $("progress").textContent = percent + "%";
-  $("hook").textContent = rope ? "✂ RELEASE" : "🪝 HOOK";
+  $("hookLabel").textContent = rope ? "RELEASE" : "HOOK";
 
   if (noticeTime > 0) $("status").textContent = notice;
-  else if (surgeActive) $("status").textContent = "⚠ LAVA SURGE ACTIVE — CLIMB!";
-  else if (lavaSlowTimer > 0) $("status").textContent = "⏳ Lava slowed — " + lavaSlowTimer.toFixed(1) + "s";
+  else if (surgeActive) $("status").textContent = "LAVA SURGE ACTIVE — CLIMB!";
+  else if (lavaSlowTimer > 0) $("status").textContent = "Lava slowed — " + lavaSlowTimer.toFixed(1) + "s";
   else if (rope) $("status").textContent = "Reeling up! Release & hook the next anchor.";
   else if (candidate()) $("status").textContent = "Anchor in reach — tap HOOK!";
   else $("status").textContent = "Steer toward an anchor above you.";
 }
 
-// Apply pickup effect
 function applyPickup(p) {
   if (p.type === "rope") {
-    // Refill nearest exhausted anchors within 220px
     let refilled = 0;
     for (const a of anchors) {
-      if (a.uses <= 0 &&
-          Math.hypot(a.x - p.x, a.y - p.y) < 220) {
+      if (a.uses <= 0 && Math.hypot(a.x - p.x, a.y - p.y) < 240) {
         a.uses = Math.min(a.maxUses, a.uses + 1);
         refilled++;
       }
     }
     if (refilled === 0) {
-      // Nothing exhausted nearby — give nearest usable one a bonus
       let nearest = null, bd = Infinity;
       for (const a of anchors) {
         const d = Math.hypot(a.x - p.x, a.y - p.y);
         if (d < bd) { bd = d; nearest = a; }
       }
-      if (nearest) { nearest.uses = Math.min(nearest.maxUses, nearest.uses + 1); refilled = 1; }
+      if (nearest) {
+        nearest.uses = Math.min(nearest.maxUses, nearest.uses + 1);
+        refilled = 1;
+      }
     }
-    notice = "🧵 Rope refilled (+" + refilled + " anchor)";
+    notice = "Rope refilled (+" + refilled + " anchor)";
     noticeTime = 1.6;
     burst(p.x, p.y, "#4ade80", 22);
   } else if (p.type === "time") {
-    lavaSlowTimer = 3;
-    notice = "⏳ Lava slowed for 3s!";
+    lavaSlowTimer = 4;
+    notice = "Lava slowed for 4s!";
     noticeTime = 1.6;
     burst(p.x, p.y, "#38bdf8", 22);
   } else if (p.type === "shield") {
     shield = Math.min(1, shield + 1);
-    notice = "🛡 Shield ready!";
+    notice = "Shield ready!";
     noticeTime = 1.6;
     burst(p.x, p.y, "#a78bfa", 22);
   } else if (p.type === "power") {
@@ -318,7 +328,7 @@ function applyPickup(p) {
       nearest.uses += 2;
       nearest.maxUses = Math.max(nearest.maxUses, nearest.uses);
     }
-    notice = "✨ Anchor powered (+2 uses)!";
+    notice = "Anchor powered (+2 uses)!";
     noticeTime = 1.6;
     burst(p.x, p.y, "#22d3ee", 22);
   }
@@ -346,17 +356,17 @@ function update(dt) {
     keyboard.has("ArrowRight") || keyboard.has("d");
   const steering = Number(right) - Number(left);
 
-  player.vx += steering * 560 * dt;
+  player.vx += steering * 620 * dt;
   player.vx *= Math.exp(-0.7 * dt);
-  player.vx = Math.max(-300, Math.min(300, player.vx));
-  player.vy += 720 * dt;
-  player.vy = Math.min(640, player.vy);
+  player.vx = Math.max(-330, Math.min(330, player.vx));
+  player.vy += 660 * dt;
+  player.vy = Math.min(620, player.vy);
   player.x += player.vx * dt;
   player.y += player.vy * dt;
 
   if (rope) {
     const previousLength = rope.length;
-    rope.length = Math.max(60, rope.length - 95 * dt);
+    rope.length = Math.max(60, rope.length - 135 * dt);
     const reelVelocity = (rope.length - previousLength) / dt;
     const dx = player.x - rope.anchor.x;
     const dy = player.y - rope.anchor.y;
@@ -373,8 +383,8 @@ function update(dt) {
     }
   }
 
-  if (player.x < 20) { player.x = 20; player.vx = Math.abs(player.vx) * 0.22; }
-  if (player.x > W - 20) { player.x = W - 20; player.vx = -Math.abs(player.vx) * 0.22; }
+  if (player.x < 20) { player.x = 20; player.vx = Math.abs(player.vx) * 0.3; }
+  if (player.x > W - 20) { player.x = W - 20; player.vx = -Math.abs(player.vx) * 0.3; }
   if (player.y + player.r > 510) {
     player.y = 510 - player.r;
     player.vy = Math.min(0, player.vy);
@@ -384,15 +394,14 @@ function update(dt) {
   const targetCamera = Math.min(0, highest - 290);
   camera += (targetCamera - camera) * Math.min(1, dt * 10);
 
-  // Lava speed with slow + surge
-  let baseSpeed = Math.min(130, 48 + elapsed * 0.85);
+  let baseSpeed = Math.min(70, 26 + elapsed * 0.35);
   if (lavaSlowTimer > 0) baseSpeed *= 0.5;
-  const lavaSpeed = surgeActive ? baseSpeed * 1.6 : baseSpeed;
+  const lavaSpeed = surgeActive ? baseSpeed * 1.35 : baseSpeed;
   lava -= lavaSpeed * dt;
 
   for (const orb of orbs) {
     if (!orb.taken &&
-        Math.hypot(orb.x - player.x, orb.y - player.y) < 18) {
+        Math.hypot(orb.x - player.x, orb.y - player.y) < 22) {
       orb.taken = true; collected += 1;
       burst(orb.x, orb.y, "#facc15");
     }
@@ -400,7 +409,7 @@ function update(dt) {
 
   for (const p of powerups) {
     if (!p.taken &&
-        Math.hypot(p.x - player.x, p.y - player.y) < 24) {
+        Math.hypot(p.x - player.x, p.y - player.y) < 26) {
       p.taken = true;
       applyPickup(p);
     }
@@ -409,17 +418,17 @@ function update(dt) {
   if (player.y + player.r >= lava) {
     if (shield > 0) {
       shield -= 1;
-      lava -= 120;
-      player.vy = -420;
+      lava -= 150;
+      player.vy = -460;
       burst(player.x, player.y, "#a78bfa", 26);
-      notice = "🛡 Shield saved you!";
+      notice = "Shield saved you!";
       noticeTime = 2;
     } else {
       lose("The lava caught you!");
       return;
     }
   }
-  if (player.y - camera > H + 40) { lose("You fell too far down the tower!"); return; }
+  if (player.y - camera > H + 90) { lose("You fell too far down the tower!"); return; }
   if (player.y <= FINISH_Y) { win(); }
 }
 
@@ -427,7 +436,21 @@ function circle(x, y, r, c) {
   ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
 }
 
-// Draw an icon inside a glowing pickup circle
+// Draw a star path
+function starPath(cx, cy, spikes, outerR, innerR) {
+  let rot = -Math.PI / 2;
+  const step = Math.PI / spikes;
+  ctx.beginPath();
+  ctx.moveTo(cx + Math.cos(rot) * outerR, cy + Math.sin(rot) * outerR);
+  for (let i = 0; i < spikes; i++) {
+    rot += step;
+    ctx.lineTo(cx + Math.cos(rot) * innerR, cy + Math.sin(rot) * innerR);
+    rot += step;
+    ctx.lineTo(cx + Math.cos(rot) * outerR, cy + Math.sin(rot) * outerR);
+  }
+  ctx.closePath();
+}
+
 function drawPickup(p, y) {
   const colors = {
     rope: "#4ade80",
@@ -438,21 +461,56 @@ function drawPickup(p, y) {
   const col = colors[p.type];
   ctx.save();
   ctx.shadowColor = col; ctx.shadowBlur = 14;
-  circle(p.x, y, 11, col);
+  circle(p.x, y, 12, col);
   ctx.shadowBlur = 0;
   ctx.fillStyle = "#0c132b";
-  ctx.beginPath(); ctx.arc(p.x, y, 7, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(p.x, y, 8, 0, Math.PI * 2); ctx.fill();
 
   ctx.fillStyle = col;
-  ctx.font = "bold 13px system-ui";
-  ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  let sym = "?";
-  if (p.type === "rope") sym = "🧵";
-  else if (p.type === "time") sym = "⏳";
-  else if (p.type === "shield") sym = "🛡";
-  else if (p.type === "power") sym = "✨";
-  ctx.font = "12px system-ui";
-  ctx.fillText(sym, p.x, y + 1);
+  ctx.strokeStyle = col;
+  ctx.lineWidth = 1.8;
+  ctx.lineCap = "round";
+
+  if (p.type === "rope") {
+    // Coiled rope: concentric arcs
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.arc(p.x, y, 2 + i * 2, Math.PI * 0.15, Math.PI * 1.55);
+      ctx.stroke();
+    }
+  } else if (p.type === "time") {
+    // Hourglass: two triangles
+    ctx.beginPath();
+    ctx.moveTo(p.x - 4, y - 5);
+    ctx.lineTo(p.x + 4, y - 5);
+    ctx.lineTo(p.x, y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(p.x - 4, y + 5);
+    ctx.lineTo(p.x + 4, y + 5);
+    ctx.lineTo(p.x, y);
+    ctx.closePath();
+    ctx.fill();
+    // top/bottom bars
+    ctx.fillRect(p.x - 5, y - 6, 10, 1.5);
+    ctx.fillRect(p.x - 5, y + 4.5, 10, 1.5);
+  } else if (p.type === "shield") {
+    // Shield shape
+    ctx.beginPath();
+    ctx.moveTo(p.x, y - 6);
+    ctx.lineTo(p.x + 5, y - 3);
+    ctx.lineTo(p.x + 5, y + 2);
+    ctx.lineTo(p.x, y + 6);
+    ctx.lineTo(p.x - 5, y + 2);
+    ctx.lineTo(p.x - 5, y - 3);
+    ctx.closePath();
+    ctx.fill();
+  } else if (p.type === "power") {
+    // 5-point star
+    starPath(p.x, y, 5, 6, 2.6);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -508,10 +566,11 @@ function draw() {
       exhausted ? "#3b2f2f" : highlighted ? "#67e8f9" : "#64748b");
 
     if (!exhausted) {
-      for (let i = 0; i < Math.min(anchor.uses, 5); i++) {
+      const pips = Math.min(anchor.uses, 5);
+      for (let i = 0; i < pips; i++) {
         ctx.fillStyle = "#a5f3fc";
         ctx.beginPath();
-        ctx.arc(anchor.x - (Math.min(anchor.uses, 5) - 1) * 4 + i * 8, y + 16, 2, 0, Math.PI * 2);
+        ctx.arc(anchor.x - (pips - 1) * 4 + i * 8, y + 16, 2, 0, Math.PI * 2);
         ctx.fill();
       }
     }
@@ -574,7 +633,6 @@ function draw() {
     ctx.fillStyle = "#67e8f9"; ctx.fillRect(-5, -4, 10, 3);
     ctx.restore();
 
-    // Shield aura
     if (shield > 0) {
       ctx.strokeStyle = "rgba(167,139,250,.7)"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(player.x, py, 22, 0, Math.PI * 2); ctx.stroke();
@@ -601,7 +659,7 @@ function draw() {
       ctx.fillRect(0, H - 60, W, 60);
       ctx.fillStyle = "#fee2e2";
       ctx.font = "bold 16px system-ui"; ctx.textAlign = "center";
-      ctx.fillText("⚠ SURGE ⚠", W / 2, H - 24);
+      ctx.fillText("LAVA SURGE", W / 2, H - 24);
     }
   }
 
@@ -666,7 +724,7 @@ $("pause").onclick = pause;
 panel(
   "GRAPPLE ESCAPE",
   "Hook onto anchors and escape the rising lava. Anchors have limited uses — " +
-  "grab 🧵 rope refills, ⏳ time slows, 🛡 shields and ✨ power boosts along the way!",
+  "grab green rope refills, blue time slows, purple shields and cyan power boosts along the way!",
   "Start escape", start
 );
 
