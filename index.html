@@ -2,43 +2,54 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>
-* { box-sizing: border-box; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-body {
-  margin: 0;
+html, body {
+  height: 100%;
+  overflow: hidden;
   color: #e2e8f0;
   background: #070b18;
   font-family: system-ui, sans-serif;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
-.wrap {
-  max-width: 480px;
-  margin: auto;
-  padding: 8px;
+.game-root {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   display: flex;
   justify-content: space-between;
-  padding: 12px 0;
-  font-size: 14px;
+  padding: 10px 14px;
+  font-size: 13px;
   font-weight: 800;
+  z-index: 10;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0,0,0,.8);
 }
 
 .arena {
   position: relative;
+  flex: 1;
+  min-height: 0;
 }
 
 canvas {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
   background: #0c132b;
-  border: 2px solid #334155;
-  border-radius: 14px;
   touch-action: none;
 }
 
@@ -49,23 +60,17 @@ canvas {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 24px;
+  padding: 28px;
   text-align: center;
-  background: rgba(5, 9, 23, .9);
-  border-radius: 14px;
+  background: rgba(5, 9, 23, .92);
+  z-index: 20;
 }
 
 #overlay.hidden { display: none; }
 
-h2 {
-  color: #67e8f9;
-  margin: 8px 0;
-}
+h2 { color: #67e8f9; margin: 8px 0; font-size: 22px; }
 
-p {
-  line-height: 1.6;
-  font-size: 14px;
-}
+p { line-height: 1.6; font-size: 14px; max-width: 340px; }
 
 button {
   border: 0;
@@ -84,55 +89,44 @@ button {
 .controls {
   display: flex;
   gap: 8px;
-  margin-top: 10px;
+  padding: 8px;
+  flex-shrink: 0;
 }
 
-.direction {
-  flex: 1;
-  background: #c4b5fd;
-  color: #2e1065;
-}
-
-#hook {
-  flex: 2;
-}
+.direction { flex: 1; background: #c4b5fd; color: #2e1065; }
+#hook { flex: 2; }
 
 #pause {
   width: 100%;
-  margin-top: 8px;
   background: #263249;
   color: #e2e8f0;
   padding: 10px;
+  border-radius: 0;
+  flex-shrink: 0;
 }
 
 #status {
   color: #a5f3fc;
-  min-height: 40px;
+  min-height: 34px;
   text-align: center;
-  padding-top: 10px;
-  font-size: 13px;
-}
-
-small {
-  display: block;
-  color: #94a3b8;
-  line-height: 1.6;
+  font-size: 12px;
+  padding: 4px 8px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 </style>
 </head>
-
 <body>
-<div class="wrap">
-  <div class="hud">
-    <span id="height">Height: 0 m</span>
-    <span id="orbs">Orbs: 0</span>
-    <span id="progress">0%</span>
-  </div>
-
+<div class="game-root">
   <div class="arena">
-    <canvas id="game" width="480" height="600"
-      tabindex="0" aria-label="Grapple Escape arena"></canvas>
-
+    <canvas id="game" tabindex="0" aria-label="Grapple Escape arena"></canvas>
+    <div class="hud">
+      <span id="height">Height: 0 m</span>
+      <span id="orbs">Orbs: 0</span>
+      <span id="progress">0%</span>
+    </div>
     <div id="overlay">
       <h2 id="title">GRAPPLE ESCAPE</h2>
       <p id="message"></p>
@@ -145,17 +139,8 @@ small {
     <button id="hook">🪝 HOOK</button>
     <button class="direction" id="right">▶</button>
   </div>
-
   <button id="pause">Pause</button>
   <div id="status"></div>
-
-  <small>
-    Tap HOOK to attach to the highlighted anchor.
-    Your rope automatically reels you upward.<br>
-    Hold ◀ or ▶ to swing. Tap RELEASE, then HOOK again to climb.<br>
-    You can also tap the arena to hook or release.<br>
-    Keyboard: A/D or arrows to steer, Space to hook, P to pause.
-  </small>
 </div>
 
 <script>
@@ -165,11 +150,11 @@ const $ = id => document.getElementById(id);
 const canvas = $("game");
 const ctx = canvas.getContext("2d");
 
-const W = 480;
-const H = 600;
+let W = 480;
+let H = 600;
 const START_Y = 485;
 const FINISH_Y = -2200;
-const REACH = 310;
+const REACH = 235;
 
 let state = "ready";
 let player;
@@ -186,9 +171,29 @@ let highest = START_Y;
 let notice = "";
 let noticeTime = 0;
 
+// Surge mechanics
+let surgeTimer = 0;
+let surgeActive = false;
+const SURGE_INTERVAL = 8;
+const SURGE_DURATION = 2;
+
 const keyboard = new Set();
 const leftTouches = new Set();
 const rightTouches = new Set();
+
+function resize() {
+  const arena = canvas.parentElement;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = arena.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+window.addEventListener("resize", resize);
+window.addEventListener("orientationchange", resize);
 
 function clearInput() {
   keyboard.clear();
@@ -204,19 +209,21 @@ function panel(title, message, label, action) {
   $("overlay").classList.remove("hidden");
 }
 
-function random(min, max) {
-  return min + Math.random() * (max - min);
-}
+function random(min, max) { return min + Math.random() * (max - min); }
 
 function generateTower() {
   anchors = [];
   orbs = [];
 
-  let x = 250;
+  let x = W / 2;
   let y = 325;
 
   while (y > FINISH_Y - 100) {
-    anchors.push({x, y});
+    anchors.push({
+      x,
+      y,
+      uses: Math.floor(random(2, 4)) // 2 or 3 hooks allowed
+    });
 
     orbs.push({
       x: x + random(-24, 24),
@@ -224,13 +231,13 @@ function generateTower() {
       taken: false
     });
 
-    // Nearby anchors with limited horizontal separation.
-    x = Math.max(85, Math.min(W - 85, x + random(-140, 140)));
-    y -= random(125, 155);
+    x = Math.max(85, Math.min(W - 85, x + random(-190, 190)));
+    y -= random(105, 185);
   }
 }
 
 function start() {
+  resize();
   generateTower();
 
   player = {
@@ -250,6 +257,8 @@ function start() {
   highest = START_Y;
   notice = "";
   noticeTime = 0;
+  surgeTimer = 0;
+  surgeActive = false;
 
   clearInput();
   state = "playing";
@@ -267,12 +276,13 @@ function candidate() {
   let bestScore = Infinity;
 
   for (const anchor of anchors) {
+    if (anchor.uses <= 0) continue;
+
     const dx = anchor.x - player.x;
     const dy = anchor.y - player.y;
     const distance = Math.hypot(dx, dy);
 
-    // Only hook anchors meaningfully above the player.
-    if (dy > -35 || distance > REACH) continue;
+    if (dy > -60 || distance > REACH) continue;
 
     const score = distance + Math.abs(dx) * 0.15;
 
@@ -296,17 +306,16 @@ function hook() {
   const anchor = candidate();
 
   if (!anchor) {
-    notice = "No anchor above you is within reach!";
+    notice = "No usable anchor in reach!";
     noticeTime = 1.5;
     return;
   }
 
+  anchor.uses -= 1;
+
   rope = {
     anchor,
-    length: Math.hypot(
-      anchor.x - player.x,
-      anchor.y - player.y
-    )
+    length: Math.hypot(anchor.x - player.x, anchor.y - player.y)
   };
 
   burst(anchor.x, anchor.y, "#67e8f9", 10);
@@ -316,7 +325,6 @@ function burst(x, y, color, count = 18) {
   for (let i = 0; i < count; i++) {
     const angle = random(0, Math.PI * 2);
     const speed = random(35, 150);
-
     particles.push({
       x, y,
       vx: Math.cos(angle) * speed,
@@ -329,12 +337,9 @@ function burst(x, y, color, count = 18) {
 
 function lose(reason) {
   if (state !== "playing") return;
-
   state = "over";
   clearInput();
-
   const height = Math.floor((START_Y - highest) / 10);
-
   panel(
     "ESCAPE FAILED",
     reason + " Height: " + height + " m. Orbs: " + collected + ".",
@@ -346,7 +351,6 @@ function lose(reason) {
 function win() {
   state = "won";
   clearInput();
-
   panel(
     "YOU ESCAPED!",
     "You climbed the tower in " + elapsed.toFixed(1) +
@@ -361,13 +365,7 @@ function pause() {
     state = "paused";
     clearInput();
     $("pause").textContent = "Resume";
-
-    panel(
-      "PAUSED",
-      "The lava is paused too.",
-      "Resume",
-      pause
-    );
+    panel("PAUSED", "The lava is paused too.", "Resume", pause);
   } else if (state === "paused") {
     state = "playing";
     $("pause").textContent = "Pause";
@@ -378,39 +376,25 @@ function pause() {
 function hud() {
   if (!player) return;
 
-  const height = Math.max(
-    0,
-    Math.floor((START_Y - highest) / 10)
-  );
-
-  const percent = Math.max(
-    0,
-    Math.min(
-      100,
-      Math.floor(
-        (START_Y - highest) /
-        (START_Y - FINISH_Y) * 100
-      )
-    )
-  );
+  const height = Math.max(0, Math.floor((START_Y - highest) / 10));
+  const percent = Math.max(0, Math.min(100,
+    Math.floor((START_Y - highest) / (START_Y - FINISH_Y) * 100)));
 
   $("height").textContent = "Height: " + height + " m";
   $("orbs").textContent = "Orbs: " + collected;
   $("progress").textContent = percent + "%";
-
   $("hook").textContent = rope ? "✂ RELEASE" : "🪝 HOOK";
 
   if (noticeTime > 0) {
     $("status").textContent = notice;
+  } else if (surgeActive) {
+    $("status").textContent = "⚠ LAVA SURGE ACTIVE — CLIMB!";
   } else if (rope) {
-    $("status").textContent =
-      "Reeling upward! Release and hook again for the next anchor.";
+    $("status").textContent = "Reeling up! Release & hook the next anchor.";
   } else if (candidate()) {
-    $("status").textContent =
-      "Anchor in reach — tap HOOK!";
+    $("status").textContent = "Anchor in reach — tap HOOK!";
   } else {
-    $("status").textContent =
-      "Steer toward an anchor above you.";
+    $("status").textContent = "Steer toward an anchor above you.";
   }
 }
 
@@ -422,7 +406,6 @@ function update(dt) {
     p.x += p.vx * dt;
     p.y += p.vy * dt;
   }
-
   particles = particles.filter(p => p.life > 0);
 
   if (state !== "playing") return;
@@ -430,32 +413,31 @@ function update(dt) {
   elapsed += dt;
   noticeTime = Math.max(0, noticeTime - dt);
 
-  const left =
-    leftTouches.size > 0 ||
-    keyboard.has("ArrowLeft") ||
-    keyboard.has("a");
+  // Surge timing
+  surgeTimer += dt;
+  const cycle = surgeTimer % SURGE_INTERVAL;
+  surgeActive = cycle < SURGE_DURATION;
 
-  const right =
-    rightTouches.size > 0 ||
-    keyboard.has("ArrowRight") ||
-    keyboard.has("d");
+  const left = leftTouches.size > 0 ||
+    keyboard.has("ArrowLeft") || keyboard.has("a");
+  const right = rightTouches.size > 0 ||
+    keyboard.has("ArrowRight") || keyboard.has("d");
 
   const steering = Number(right) - Number(left);
 
-  player.vx += steering * 650 * dt;
+  player.vx += steering * 560 * dt;
   player.vx *= Math.exp(-0.7 * dt);
-  player.vx = Math.max(-320, Math.min(320, player.vx));
+  player.vx = Math.max(-300, Math.min(300, player.vx));
 
-  player.vy += 650 * dt;
-  player.vy = Math.min(580, player.vy);
+  player.vy += 720 * dt;
+  player.vy = Math.min(640, player.vy);
 
   player.x += player.vx * dt;
   player.y += player.vy * dt;
 
   if (rope) {
-    // Shorten the rope, pulling the player toward the anchor.
     const previousLength = rope.length;
-    rope.length = Math.max(60, rope.length - 145 * dt);
+    rope.length = Math.max(60, rope.length - 95 * dt);
 
     const reelVelocity = (rope.length - previousLength) / dt;
 
@@ -470,7 +452,6 @@ function update(dt) {
       player.x = rope.anchor.x + nx * rope.length;
       player.y = rope.anchor.y + ny * rope.length;
 
-      // Preserve sideways swing while constraining outward motion.
       const radialVelocity = player.vx * nx + player.vy * ny;
 
       if (radialVelocity > reelVelocity) {
@@ -480,18 +461,9 @@ function update(dt) {
     }
   }
 
-  // Tower walls bounce the player gently.
-  if (player.x < 20) {
-    player.x = 20;
-    player.vx = Math.abs(player.vx) * 0.35;
-  }
+  if (player.x < 20) { player.x = 20; player.vx = Math.abs(player.vx) * 0.22; }
+  if (player.x > W - 20) { player.x = W - 20; player.vx = -Math.abs(player.vx) * 0.22; }
 
-  if (player.x > W - 20) {
-    player.x = W - 20;
-    player.vx = -Math.abs(player.vx) * 0.35;
-  }
-
-  // Starting platform.
   if (player.y + player.r > 510) {
     player.y = 510 - player.r;
     player.vy = Math.min(0, player.vy);
@@ -499,38 +471,26 @@ function update(dt) {
 
   highest = Math.min(highest, player.y);
 
-  // Camera follows upward progress, not every small bounce.
   const targetCamera = Math.min(0, highest - 290);
-  camera += (targetCamera - camera) *
-    Math.min(1, dt * 8);
+  camera += (targetCamera - camera) * Math.min(1, dt * 10);
 
-  // Lava rises continuously and gradually accelerates.
-  lava -= Math.min(65, 32 + elapsed * 0.45) * dt;
+  // Lava base speed + surge boost
+  const baseSpeed = Math.min(130, 48 + elapsed * 0.85);
+  const lavaSpeed = surgeActive ? baseSpeed * 1.6 : baseSpeed;
+  lava -= lavaSpeed * dt;
 
   for (const orb of orbs) {
-    if (
-      !orb.taken &&
-      Math.hypot(orb.x - player.x, orb.y - player.y) < 25
-    ) {
+    if (!orb.taken &&
+        Math.hypot(orb.x - player.x, orb.y - player.y) < 18) {
       orb.taken = true;
       collected += 1;
       burst(orb.x, orb.y, "#facc15");
     }
   }
 
-  if (player.y + player.r >= lava) {
-    lose("The lava caught you!");
-    return;
-  }
-
-  if (player.y - camera > H + 80) {
-    lose("You fell too far down the tower!");
-    return;
-  }
-
-  if (player.y <= FINISH_Y) {
-    win();
-  }
+  if (player.y + player.r >= lava) { lose("The lava caught you!"); return; }
+  if (player.y - camera > H + 40) { lose("You fell too far down the tower!"); return; }
+  if (player.y <= FINISH_Y) { win(); }
 }
 
 function circle(x, y, radius, color) {
@@ -547,19 +507,11 @@ function draw() {
 
   ctx.strokeStyle = "#182441";
   ctx.lineWidth = 1;
-
   for (let x = 0; x <= W; x += 48) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, H);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
   }
-
   for (let y = gridOffset; y < H; y += 50) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(W, y);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
   }
 
   ctx.fillStyle = "#1d2945";
@@ -571,32 +523,24 @@ function draw() {
   const py = player.y - camera;
   const selected = rope ? null : candidate();
 
-  // Starting ledge.
   const floorY = 510 - camera;
-
   if (floorY < H) {
     ctx.fillStyle = "#334155";
     ctx.fillRect(10, floorY, W - 20, 18);
-
     ctx.fillStyle = "#94a3b8";
     ctx.fillRect(10, floorY, W - 20, 3);
   }
 
-  // Exit portal.
   const exitY = FINISH_Y - camera;
-
   if (exitY > -90 && exitY < H + 90) {
     ctx.save();
-
     ctx.strokeStyle = "#86efac";
     ctx.shadowColor = "#86efac";
     ctx.shadowBlur = 20;
     ctx.lineWidth = 5;
-
     ctx.beginPath();
     ctx.ellipse(W / 2, exitY, 155, 45, 0, 0, Math.PI * 2);
     ctx.stroke();
-
     ctx.restore();
 
     ctx.fillStyle = "#86efac";
@@ -607,28 +551,31 @@ function draw() {
 
   for (const anchor of anchors) {
     const y = anchor.y - camera;
-
     if (y < -30 || y > H + 30) continue;
+
+    const exhausted = anchor.uses <= 0;
+    const highlighted = anchor === selected ||
+      (rope && rope.anchor === anchor);
 
     ctx.strokeStyle = "#334155";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(anchor.x, y);
-    ctx.lineTo(
-      anchor.x < W / 2 ? 10 : W - 10,
-      y - 20
-    );
+    ctx.lineTo(anchor.x < W / 2 ? 10 : W - 10, y - 20);
     ctx.stroke();
 
-    const highlighted = anchor === selected ||
-      (rope && rope.anchor === anchor);
+    circle(anchor.x, y, highlighted ? 10 : 7,
+      exhausted ? "#3b2f2f" : highlighted ? "#67e8f9" : "#64748b");
 
-    circle(
-      anchor.x,
-      y,
-      highlighted ? 10 : 7,
-      highlighted ? "#67e8f9" : "#64748b"
-    );
+    // Usage pips
+    if (!exhausted) {
+      for (let i = 0; i < anchor.uses; i++) {
+        ctx.fillStyle = "#a5f3fc";
+        ctx.beginPath();
+        ctx.arc(anchor.x - (anchor.uses - 1) * 4 + i * 8, y + 16, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
 
     if (highlighted) {
       ctx.strokeStyle = "#a5f3fc";
@@ -639,7 +586,6 @@ function draw() {
     }
   }
 
-  // Aim guide for the next anchor.
   if (selected && state === "playing") {
     ctx.save();
     ctx.setLineDash([5, 8]);
@@ -653,9 +599,7 @@ function draw() {
 
   for (const orb of orbs) {
     const y = orb.y - camera;
-
     if (orb.taken || y < -20 || y > H + 20) continue;
-
     ctx.save();
     ctx.shadowColor = "#facc15";
     ctx.shadowBlur = 12;
@@ -668,10 +612,7 @@ function draw() {
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(player.x, py);
-    ctx.lineTo(
-      rope.anchor.x,
-      rope.anchor.y - camera
-    );
+    ctx.lineTo(rope.anchor.x, rope.anchor.y - camera);
     ctx.stroke();
   }
 
@@ -680,65 +621,58 @@ function draw() {
     ctx.fillStyle = p.color;
     ctx.fillRect(p.x, p.y - camera, 4, 4);
   }
-
   ctx.globalAlpha = 1;
 
   if (state !== "over") {
     ctx.save();
     ctx.translate(player.x, py);
     ctx.rotate(player.vx / 1000);
-
     ctx.shadowColor = "#c4b5fd";
     ctx.shadowBlur = 18;
-
     ctx.fillStyle = "#c4b5fd";
     ctx.fillRect(-12, -13, 24, 26);
-
     ctx.shadowBlur = 0;
     ctx.fillStyle = "#312e81";
     ctx.fillRect(-7, -6, 14, 7);
-
     ctx.fillStyle = "#67e8f9";
     ctx.fillRect(-5, -4, 10, 3);
-
     ctx.restore();
   }
 
-  // Rising lava.
   const lavaY = lava - camera;
-
   if (lavaY < H) {
     const startY = Math.max(-20, lavaY);
-
-    ctx.fillStyle = "#dc2626";
+    ctx.fillStyle = surgeActive ? "#ef4444" : "#dc2626";
     ctx.fillRect(0, startY, W, H - startY);
 
     ctx.fillStyle = "#fb923c";
     ctx.beginPath();
     ctx.moveTo(0, startY + 12);
-
     for (let x = 0; x <= W; x += 8) {
       const wave = Math.sin(x * 0.04 + elapsed * 5) * 5;
       ctx.lineTo(x, lavaY + wave);
     }
-
     ctx.lineTo(W, startY + 22);
     ctx.lineTo(0, startY + 22);
     ctx.closePath();
     ctx.fill();
+
+    if (surgeActive) {
+      ctx.fillStyle = "rgba(248,113,113,.35)";
+      ctx.fillRect(0, H - 60, W, 60);
+      ctx.fillStyle = "#fee2e2";
+      ctx.font = "bold 16px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText("⚠ SURGE ⚠", W / 2, H - 24);
+    }
   }
 
-  // Lava distance indicator.
   if (state === "playing") {
-    const gap = Math.max(
-      0,
-      Math.floor((lava - player.y) / 10)
-    );
-
+    const gap = Math.max(0, Math.floor((lava - player.y) / 10));
     ctx.fillStyle = gap < 20 ? "#fb923c" : "#94a3b8";
     ctx.textAlign = "center";
     ctx.font = "13px system-ui";
-    ctx.fillText("Lava below: " + gap + " m", W / 2, 24);
+    ctx.fillText("Lava below: " + gap + " m", W / 2, 60);
   }
 }
 
@@ -746,23 +680,15 @@ function bindDirection(element, set) {
   element.addEventListener("pointerdown", event => {
     if (state !== "playing") return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
-
     event.preventDefault();
     set.add(event.pointerId);
     element.setPointerCapture(event.pointerId);
   });
-
-  function release(event) {
-    set.delete(event.pointerId);
-  }
-
+  function release(event) { set.delete(event.pointerId); }
   element.addEventListener("pointerup", release);
   element.addEventListener("pointercancel", release);
   element.addEventListener("lostpointercapture", release);
-
-  element.addEventListener("contextmenu", event => {
-    event.preventDefault();
-  });
+  element.addEventListener("contextmenu", e => e.preventDefault());
 }
 
 bindDirection($("left"), leftTouches);
@@ -774,38 +700,24 @@ for (const element of [canvas, $("hook")]) {
     event.preventDefault();
     hook();
   });
-
-  element.addEventListener("contextmenu", event => {
-    event.preventDefault();
-  });
+  element.addEventListener("contextmenu", e => e.preventDefault());
 }
 
 window.addEventListener("keydown", event => {
-  const key = event.key.length === 1
-    ? event.key.toLowerCase()
-    : event.key;
-
+  const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
   if (["ArrowLeft", "ArrowRight", "a", "d"].includes(key)) {
     event.preventDefault();
     if (state === "playing") keyboard.add(key);
   }
-
   if (event.code === "Space") {
     event.preventDefault();
     if (!event.repeat) hook();
   }
-
-  if (event.code === "KeyP" && !event.repeat) {
-    pause();
-  }
+  if (event.code === "KeyP" && !event.repeat) pause();
 });
 
 window.addEventListener("keyup", event => {
-  keyboard.delete(
-    event.key.length === 1
-      ? event.key.toLowerCase()
-      : event.key
-  );
+  keyboard.delete(event.key.length === 1 ? event.key.toLowerCase() : event.key);
 });
 
 window.addEventListener("blur", () => {
@@ -822,24 +734,24 @@ $("pause").onclick = pause;
 panel(
   "GRAPPLE ESCAPE",
   "Hook onto anchors, swing upward, and escape the rising lava. " +
-  "Your rope reels you in automatically. Release and hook again " +
-  "to reach the next anchor!",
+  "Each anchor has limited uses! Watch for lava surges. " +
+  "Release and hook again to reach the next anchor!",
   "Start escape",
   start
 );
 
+resize();
+
 let previous = performance.now();
 
 function frame(now) {
-  const elapsed = Math.min((now - previous) / 1000, 0.05);
+  const elapsedFrame = Math.min((now - previous) / 1000, 0.05);
   previous = now;
 
-  const steps = Math.max(1, Math.ceil(elapsed / 0.008));
-  const dt = elapsed / steps;
+  const steps = Math.max(1, Math.ceil(elapsedFrame / 0.008));
+  const dt = elapsedFrame / steps;
 
-  for (let i = 0; i < steps; i++) {
-    update(dt);
-  }
+  for (let i = 0; i < steps; i++) update(dt);
 
   hud();
   draw();
