@@ -41,7 +41,9 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
   position: absolute; top: 12px; left: 12px; right: 12px;
   display: flex; justify-content: space-between; align-items: center;
   gap: 8px; z-index: 10; pointer-events: none;
+  transition: opacity 0.2s;
 }
+.hud-top.hidden { opacity: 0; visibility: hidden; }
 
 .pill {
   background: var(--glass);
@@ -57,6 +59,13 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 
 .pill-gold { color: var(--gold); border-color: rgba(250, 204, 21, 0.3); }
 .pill-cyan { color: var(--cyan); }
+
+.hearts {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 14px; line-height: 1;
+}
+.heart { color: var(--danger); text-shadow: 0 0 8px rgba(244, 63, 94, 0.5); transition: transform 0.2s, opacity 0.2s; }
+.heart.lost { color: #334155; text-shadow: none; transform: scale(0.85); }
 
 .hud-shield {
   width: 14px; height: 16px;
@@ -107,6 +116,7 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
   white-space: nowrap; pointer-events: none; z-index: 9;
   transition: all 0.2s;
 }
+.status-banner.hidden { opacity: 0; visibility: hidden; }
 .status-banner.alert {
   color: #fecdd3; border-color: rgba(244, 63, 94, 0.5);
   background: rgba(136, 19, 55, 0.75);
@@ -239,6 +249,7 @@ h1 {
   border-top: 1px solid var(--glass-border);
   flex-shrink: 0;
 }
+.controls.hidden { display: none; }
 
 .ctrl-btn {
   border: 1px solid var(--glass-border);
@@ -283,14 +294,23 @@ h1 {
     <canvas id="game" tabindex="0" aria-label="Grapple Escape arena"></canvas>
 
     <!-- Floating HUD -->
-    <div class="hud-top">
-      <div class="pill pill-cyan">
-        <span id="height">0 m</span>
-        <span style="opacity:0.4">|</span>
-        <span id="progress">0%</span>
+    <div class="hud-top hidden" id="hudTop">
+      <div style="display:flex; align-items:center; gap:6px;">
+        <div class="pill">
+          <div class="hearts" id="heartsDisplay">
+            <span class="heart">♥</span>
+            <span class="heart">♥</span>
+            <span class="heart">♥</span>
+          </div>
+        </div>
+        <div class="pill pill-cyan">
+          <span id="height">0 m</span>
+          <span style="opacity:0.4">|</span>
+          <span id="progress">0%</span>
+        </div>
       </div>
 
-      <div style="display:flex; align-items:center; gap:8px;">
+      <div style="display:flex; align-items:center; gap:6px;">
         <div class="pill pill-gold">
           <span>●</span>
           <span id="orbs">0</span>
@@ -305,7 +325,7 @@ h1 {
       </div>
     </div>
 
-    <div class="status-banner" id="status">Tap HOOK to grapple upward</div>
+    <div class="status-banner hidden" id="status">Tap HOOK to grapple upward</div>
 
     <!-- Main Menu / Pause / End Overlay -->
     <div class="overlay" id="overlay">
@@ -313,7 +333,7 @@ h1 {
         <span class="badge-tag" id="badgeTag">TOWER ESCAPE</span>
         <h1 id="title">GRAPPLE ESCAPE</h1>
         <p class="desc" id="message">
-          Outclimb the rising magma! Watch out for <b>wall flamethrowers</b> and <b>patrol turrets</b>. Collect orbs to unlock new box skins!
+          Outclimb the rising magma with <b>3 lives</b>! Dodge <b>wall flamethrowers</b> and <b>patrol turrets</b>. Bank orbs to unlock box skins!
         </p>
 
         <div class="stat-row" id="statsRow">
@@ -352,8 +372,8 @@ h1 {
     </div>
   </div>
 
-  <!-- Arcade Controls -->
-  <div class="controls">
+  <!-- Arcade Controls (Hidden when not playing) -->
+  <div class="controls hidden" id="controlsBar">
     <button class="ctrl-btn direction" id="left" aria-label="Move Left">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
     </button>
@@ -410,8 +430,9 @@ function getEquippedSkin() {
 /* --- GAME VARIABLES --- */
 let W = 480, H = 600;
 const START_Y = 485;
-const FINISH_Y = -2500; // Slightly taller & harder tower
+const FINISH_Y = -2500;
 const REACH = 275;
+const MAX_LIVES = 3;
 
 let state = "ready";
 let player, anchors = [], orbs = [], powerups = [];
@@ -427,6 +448,8 @@ const SURGE_INTERVAL = 10, SURGE_DURATION = 1.8;
 
 let lavaSlowTimer = 0;
 let shield = 0;
+let lives = MAX_LIVES;
+let invulnTimer = 0;
 
 const keyboard = new Set();
 const leftTouches = new Set();
@@ -443,6 +466,14 @@ function resize() {
 }
 window.addEventListener("resize", resize);
 window.addEventListener("orientationchange", resize);
+
+function setGameplayUIVisible(visible) {
+  $("controlsBar").classList.toggle("hidden", !visible);
+  $("hudTop").classList.toggle("hidden", !visible);
+  $("status").classList.toggle("hidden", !visible);
+  // Resize canvas smoothly when bottom controls appear/disappear
+  requestAnimationFrame(resize);
+}
 
 function clearInput() {
   keyboard.clear(); leftTouches.clear(); rightTouches.clear();
@@ -516,6 +547,7 @@ function updateMenuStats() {
 }
 
 function panel(badge, title, message, label, action, showShop = true) {
+  setGameplayUIVisible(false);
   $("badgeTag").textContent = badge;
   $("title").textContent = title;
   $("message").innerHTML = message;
@@ -533,7 +565,7 @@ function generateTower() {
 
   let x = W / 2, y = 325, idx = 0;
   while (y > FINISH_Y - 80) {
-    const uses = Math.floor(random(2, 5)); // 2..4 uses (tighter!)
+    const uses = Math.floor(random(2, 5));
     anchors.push({ x, y, uses, maxUses: uses });
 
     // Orbs
@@ -556,19 +588,19 @@ function generateTower() {
       powerups.push({ x: random(50, W - 50), y: y - random(30, 60), type: "power", taken: false });
     }
 
-    // Wall Flamethrowers (starting after 2nd anchor)
+    // Wall Flamethrowers
     if (idx >= 2 && idx % 3 === 0) {
       const side = Math.random() < 0.5 ? "left" : "right";
       flamers.push({
         side,
         y: y - random(20, 70),
         timer: random(0, 3.8),
-        cycle: 3.8, // 0..2.1 idle, 2.1..2.9 warning, 2.9..3.8 blast
+        cycle: 3.8,
         length: Math.min(W * 0.62, 240)
       });
     }
 
-    // Flying Patrol Turrets (starting after 3rd anchor)
+    // Flying Patrol Turrets
     if (idx >= 3 && idx % 4 === 0) {
       turrets.push({
         x: random(60, W - 60),
@@ -587,6 +619,9 @@ function generateTower() {
 }
 
 function start() {
+  $("overlay").classList.add("hidden");
+  $("shopOverlay").classList.add("hidden");
+  setGameplayUIVisible(true);
   resize();
   generateTower();
   player = { x: W / 2, y: START_Y, vx: 0, vy: 0, r: 13 };
@@ -595,9 +630,8 @@ function start() {
   highest = START_Y; notice = ""; noticeTime = 0;
   surgeTimer = 0; surgeActive = false;
   lavaSlowTimer = 0; shield = 0;
+  lives = MAX_LIVES; invulnTimer = 0;
   clearInput(); state = "playing";
-  $("overlay").classList.add("hidden");
-  $("shopOverlay").classList.add("hidden");
   hud();
 }
 
@@ -649,18 +683,35 @@ function recordProgress() {
   return height;
 }
 
-function hitPlayer(reason, knockVx = 0, knockVy = -320) {
+function hitPlayer(reason, knockVx = 0, knockVy = -340) {
+  if (invulnTimer > 0) return false;
+
   if (shield > 0) {
     shield -= 1;
     rope = null;
     player.vx = knockVx;
     player.vy = knockVy;
+    invulnTimer = 1.0;
     triggerShake(0.25, 8);
     burst(player.x, player.y, "#a78bfa", 26);
     notice = "Shield absorbed the hit!";
     noticeTime = 1.8;
     return false;
   }
+
+  lives -= 1;
+  if (lives > 0) {
+    rope = null;
+    player.vx = knockVx;
+    player.vy = knockVy;
+    invulnTimer = 1.5;
+    triggerShake(0.3, 10);
+    burst(player.x, player.y, "#f43f5e", 24);
+    notice = `Ouch! ${lives} ${lives === 1 ? "life" : "lives"} left!`;
+    noticeTime = 2.0;
+    return false;
+  }
+
   triggerShake(0.35, 12);
   burst(player.x, player.y, "#f43f5e", 30);
   lose(reason);
@@ -699,10 +750,11 @@ function win() {
 function pause() {
   if (state === "playing") {
     state = "paused"; clearInput();
-    panel("PAUSED", "GAME PAUSED", "Take a breather. The hazards and lava are frozen.", "Resume", pause, false);
+    panel("PAUSED", "GAME PAUSED", "Take a breather. Hazards and lava are frozen.", "Resume", pause, false);
   } else if (state === "paused") {
     state = "playing";
     $("overlay").classList.add("hidden");
+    setGameplayUIVisible(true);
   }
 }
 
@@ -711,6 +763,11 @@ function hud() {
   const height = Math.max(0, Math.floor((START_Y - highest) / 10));
   const percent = Math.max(0, Math.min(100,
     Math.floor((START_Y - highest) / (START_Y - FINISH_Y) * 100)));
+
+  const heartEls = $("heartsDisplay").children;
+  for (let i = 0; i < MAX_LIVES; i++) {
+    heartEls[i].classList.toggle("lost", i >= lives);
+  }
 
   $("height").textContent = height + " m";
   $("progress").textContent = percent + "%";
@@ -802,6 +859,7 @@ function update(dt) {
   elapsed += dt;
   noticeTime = Math.max(0, noticeTime - dt);
   lavaSlowTimer = Math.max(0, lavaSlowTimer - dt);
+  invulnTimer = Math.max(0, invulnTimer - dt);
 
   surgeTimer += dt;
   surgeActive = (surgeTimer % SURGE_INTERVAL) < SURGE_DURATION;
@@ -851,7 +909,7 @@ function update(dt) {
   const targetCamera = Math.min(0, highest - 290);
   camera += (targetCamera - camera) * Math.min(1, dt * 10);
 
-  // Lava speed scales slightly faster now
+  // Lava speed
   let baseSpeed = Math.min(82, 30 + elapsed * 0.42);
   if (lavaSlowTimer > 0) baseSpeed *= 0.5;
   const lavaSpeed = surgeActive ? baseSpeed * 1.38 : baseSpeed;
@@ -881,7 +939,6 @@ function update(dt) {
     f.timer = (f.timer + dt) % f.cycle;
     const isBlasting = f.timer >= 2.9;
     if (isBlasting && Math.abs(f.y - camera) < H + 60) {
-      // Emit occasional flame sparks
       if (Math.random() < 0.35) {
         const fx = f.side === "left" ? random(14, 14 + f.length) : random(W - 14 - f.length, W - 14);
         particles.push({
@@ -891,14 +948,12 @@ function update(dt) {
           life: 0.25, color: Math.random() < 0.5 ? "#fb923c" : "#facc15"
         });
       }
-      // Hitbox check
       const xMin = f.side === "left" ? 10 : W - 10 - f.length;
       const xMax = f.side === "left" ? 10 + f.length : W - 10;
       if (player.x + player.r > xMin && player.x - player.r < xMax &&
           Math.abs(player.y - f.y) < player.r + 9) {
         const pushDir = f.side === "left" ? 260 : -260;
-        if (hitPlayer("Incinerated by a wall flamethrower!", pushDir, -340)) return;
-        // Disable flame briefly if shield saved player
+        if (hitPlayer("Incinerated by a wall flamethrower!", pushDir, -360)) return;
         f.timer = 0;
       }
     }
@@ -914,7 +969,6 @@ function update(dt) {
     if (t.x < 45) { t.x = 45; t.vx = Math.abs(t.vx); }
     if (t.x > W - 45) { t.x = W - 45; t.vx = -Math.abs(t.vx); }
 
-    // Only shoot when near screen
     if (Math.abs(t.y - camera - H * 0.5) < H * 0.65) {
       t.shootTimer -= dt;
       if (t.shootTimer <= 0) {
@@ -933,10 +987,9 @@ function update(dt) {
       }
     }
 
-    // Direct collision with drone
     if (Math.hypot(t.x - player.x, t.y - player.y) < player.r + 14) {
       t.stunTimer = 2.5;
-      if (hitPlayer("Crashed into a patrol drone!", -player.vx * 0.8, -320)) return;
+      if (hitPlayer("Crashed into a patrol drone!", -player.vx * 0.8, -340)) return;
     }
   }
 
@@ -949,7 +1002,7 @@ function update(dt) {
 
     if (b.life > 0 && Math.hypot(b.x - player.x, b.y - player.y) < player.r + 5) {
       b.life = 0;
-      if (hitPlayer("Shot down by a patrol turret!", b.vx * 0.6, -260)) return;
+      if (hitPlayer("Shot down by a patrol turret!", b.vx * 0.6, -280)) return;
     }
   }
   bullets = bullets.filter(b => b.life > 0);
@@ -960,16 +1013,28 @@ function update(dt) {
       shield -= 1;
       lava -= 160;
       player.vy = -480;
+      invulnTimer = 1.0;
       triggerShake(0.25, 9);
       burst(player.x, player.y, "#a78bfa", 26);
       notice = "Shield saved you from the lava!";
       noticeTime = 2;
+    } else if (lives > 1) {
+      lives -= 1;
+      rope = null;
+      lava -= 150;
+      player.vy = -480;
+      invulnTimer = 1.5;
+      triggerShake(0.3, 10);
+      burst(player.x, player.y, "#f43f5e", 26);
+      notice = `Burned! ${lives} ${lives === 1 ? "life" : "lives"} left!`;
+      noticeTime = 2;
     } else {
+      lives = 0;
       lose("The rising lava caught you!");
       return;
     }
   }
-  if (player.y - camera > H + 90) { lose("You fell into the abyss!"); return; }
+  if (player.y - camera > H + 90) { lives = 0; lose("You fell into the abyss!"); return; }
   if (player.y <= FINISH_Y) { win(); }
 }
 
@@ -1149,13 +1214,11 @@ function draw() {
     const isWarning = f.timer >= 2.1 && f.timer < 2.9;
     const isBlasting = f.timer >= 2.9;
 
-    // Nozzle housing
     ctx.fillStyle = "#334155";
     ctx.fillRect(isLeft ? 8 : W - 20, y - 10, 12, 20);
     ctx.fillStyle = isBlasting ? "#ef4444" : isWarning ? "#facc15" : "#64748b";
     ctx.fillRect(isLeft ? 16 : W - 20, y - 6, 4, 12);
 
-    // Warning laser line
     if (isWarning) {
       ctx.save();
       ctx.strokeStyle = "rgba(250, 204, 21, 0.55)";
@@ -1168,7 +1231,6 @@ function draw() {
       ctx.restore();
     }
 
-    // Active Fire Jet
     if (isBlasting) {
       ctx.save();
       const grad = ctx.createLinearGradient(baseX, y, baseX + dir * f.length, y);
@@ -1201,14 +1263,11 @@ function draw() {
     ctx.translate(t.x, y);
     if (t.stunTimer > 0) ctx.globalAlpha = 0.45;
 
-    // Drone wings
     ctx.fillStyle = "#475569";
     ctx.fillRect(-18, -3, 36, 6);
-    // Drone core
     ctx.shadowColor = "#f43f5e"; ctx.shadowBlur = 12;
     circle(0, 0, 11, "#1e293b");
     ctx.lineWidth = 2.5; ctx.strokeStyle = "#f43f5e"; ctx.stroke();
-    // Glowing eye
     circle(0, 0, 4.5, t.shootTimer < 0.45 ? "#fef08a" : "#f43f5e");
     ctx.restore();
   }
@@ -1246,27 +1305,29 @@ function draw() {
   }
   ctx.globalAlpha = 1;
 
-  // Player Box (Equipped Skin)
+  // Player Box (Equipped Skin + Invulnerability Flash)
   if (state !== "over") {
-    ctx.save();
-    ctx.translate(player.x, py);
-    ctx.rotate(player.vx / 1000);
-    ctx.shadowColor = skin.glow; ctx.shadowBlur = 18;
-    ctx.fillStyle = skin.body;
-    ctx.beginPath();
-    ctx.roundRect(-12, -13, 24, 26, 5);
-    ctx.fill();
-    ctx.shadowBlur = 0;
+    const visible = invulnTimer <= 0 || Math.floor(invulnTimer * 16) % 2 === 0;
+    if (visible) {
+      ctx.save();
+      ctx.translate(player.x, py);
+      ctx.rotate(player.vx / 1000);
+      ctx.shadowColor = skin.glow; ctx.shadowBlur = 18;
+      ctx.fillStyle = skin.body;
+      ctx.beginPath();
+      ctx.roundRect(-12, -13, 24, 26, 5);
+      ctx.fill();
+      ctx.shadowBlur = 0;
 
-    // Visor & Eye
-    ctx.fillStyle = skin.visor;
-    ctx.beginPath();
-    ctx.roundRect(-8, -6, 16, 7, 2);
-    ctx.fill();
+      ctx.fillStyle = skin.visor;
+      ctx.beginPath();
+      ctx.roundRect(-8, -6, 16, 7, 2);
+      ctx.fill();
 
-    ctx.fillStyle = skin.eye;
-    ctx.fillRect(-5, -4, 10, 3);
-    ctx.restore();
+      ctx.fillStyle = skin.eye;
+      ctx.fillRect(-5, -4, 10, 3);
+      ctx.restore();
+    }
 
     if (shield > 0) {
       ctx.save();
@@ -1369,7 +1430,7 @@ $("pauseBtn").onclick = pause;
 panel(
   "TOWER ESCAPE",
   "GRAPPLE ESCAPE",
-  "Outclimb the rising magma! Dodge <b>wall flamethrowers</b> and <b>flying turrets</b>. Bank orbs to unlock custom box skins!",
+  "Outclimb the rising magma with <b>3 lives</b>! Dodge <b>wall flamethrowers</b> and <b>flying turrets</b>. Bank orbs to unlock custom box skins!",
   "Start Escape",
   start,
   true
